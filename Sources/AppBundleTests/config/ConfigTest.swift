@@ -128,6 +128,35 @@ final class ConfigTest: XCTestCase {
         )
     }
 
+    func testParseSidedModifiers() {
+        let result = parseConfig(
+            """
+            [mode.main.binding]
+                alt-h = 'focus left'
+                lalt-h = 'focus down'
+                ralt-shift-h = 'focus up'
+                lcmd-rcmd-h = 'focus right'
+            """,
+        )
+        assertEquals(result.errors, [])
+        assertEquals(result.config.modes[mainModeId]?.bindings.keys.sorted(), ["alt-h", "lalt-h", "lcmd-rcmd-h", "ralt-shift-h"])
+        let binding = result.config.modes[mainModeId]?.bindings["ralt-shift-h"]
+        assertEquals(binding?.modifiers, [.option, .shift])
+        assertEquals(binding?.sidedModifiers, .ralt)
+    }
+
+    func testSidedModifiersRedeclaration() {
+        let errors = parseConfig(
+            """
+            [mode.main.binding]
+                lalt-h = 'focus left'
+                alt-lalt-h = 'focus down'
+            """,
+        ).strErrors
+        assertEquals(errors.count, 1)
+        assertTrue(errors.first?.hasSuffix(": 'lalt-h' Binding redeclaration") == true)
+    }
+
     func testModesMustContainDefaultModeError() {
         let result = parseConfig(
             """

@@ -216,6 +216,20 @@ key-mapping.key-notation-to-key-code = {
 key-mapping.preset = 'dvorak'  # or 'colemak'
 ----
 
+[#left-right-modifiers]
+=== Left and right modifiers
+
+`cmd`, `alt`, `ctrl` and `shift` modifiers match both left and right keys.
+If you want to bind only one side, use `lcmd`, `rcmd`, `lalt`, `ralt`, `lctrl`, `rctrl`, `lshift` or `rshift`.
+
+It's useful if you want to keep the other side free, for example, for typing special characters with the right `alt` key.
+
+[source,toml]
+----
+[mode.main.binding]
+    lalt-h = 'focus left'
+----
+
 [#config-version]
 === config-version
 

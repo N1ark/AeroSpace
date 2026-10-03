@@ -61,23 +61,32 @@ extension HotKey {
 
 struct HotkeyBinding: Equatable, Sendable {
     let modifiers: NSEvent.ModifierFlags
+    let sidedModifiers: SidedModifiers
     let keyCode: Key
     let commands: Shell<any Command>
     let descriptionWithKeyCode: String
     let descriptionWithKeyNotation: String
 
-    init(_ modifiers: NSEvent.ModifierFlags, _ keyCode: Key, _ commands: Shell<any Command>, descriptionWithKeyNotation: String) {
+    init(
+        _ modifiers: NSEvent.ModifierFlags,
+        _ keyCode: Key,
+        _ commands: Shell<any Command>,
+        sidedModifiers: SidedModifiers = [],
+        descriptionWithKeyNotation: String,
+    ) {
         self.modifiers = modifiers
+        self.sidedModifiers = sidedModifiers
         self.keyCode = keyCode
         self.commands = commands
         self.descriptionWithKeyCode = modifiers.isEmpty
             ? keyCode.toString()
-            : modifiers.toString() + "-" + keyCode.toString()
+            : modifiers.toString(sidedModifiers) + "-" + keyCode.toString()
         self.descriptionWithKeyNotation = descriptionWithKeyNotation
     }
 
     static func == (lhs: HotkeyBinding, rhs: HotkeyBinding) -> Bool {
         lhs.modifiers == rhs.modifiers &&
+            lhs.sidedModifiers == rhs.sidedModifiers &&
             lhs.keyCode == rhs.keyCode &&
             lhs.descriptionWithKeyCode == rhs.descriptionWithKeyCode &&
             lhs.commands.strictEquals(rhs.commands)
@@ -93,9 +102,9 @@ func parseBindings(_ raw: OrderedJson, _ backtrace: ConfigBacktrace, _ c: inout 
     for (binding, rawCommand): (String, OrderedJson) in rawTable {
         let backtrace = backtrace + .key(binding)
         let binding = parseBinding(binding, backtrace, mapping)
-            .map { modifiers, key -> HotkeyBinding in
+            .map { modifiers, sidedModifiers, key -> HotkeyBinding in
                 let commands = parseShellOfCommandsForConfig(rawCommand, backtrace, &c)
-                return HotkeyBinding(modifiers, key, commands, descriptionWithKeyNotation: binding)
+                return HotkeyBinding(modifiers, key, commands, sidedModifiers: sidedModifiers, descriptionWithKeyNotation: binding)
             }
             .getOrNil(appendErrorTo: &c.errors)
         if let binding {
@@ -108,18 +117,20 @@ func parseBindings(_ raw: OrderedJson, _ backtrace: ConfigBacktrace, _ c: inout 
     return result
 }
 
-func parseBinding(_ raw: String, _ backtrace: ConfigBacktrace, _ mapping: [String: Key]) -> ResOrConfigParseDiagnostic<(NSEvent.ModifierFlags, Key)> {
+func parseBinding(_ raw: String, _ backtrace: ConfigBacktrace, _ mapping: [String: Key]) -> ResOrConfigParseDiagnostic<(NSEvent.ModifierFlags, SidedModifiers, Key)> {
     let rawKeys = raw.split(separator: "-")
-    let modifiers: ResOrConfigParseDiagnostic<NSEvent.ModifierFlags> = rawKeys.dropLast()
+    let modifiers: ResOrConfigParseDiagnostic<(NSEvent.ModifierFlags, SidedModifiers)> = rawKeys.dropLast()
         .mapAllOrFailure {
             modifiersMap[String($0)].toResult(.init(backtrace, "Can't parse modifiers in '\(raw)' binding"))
         }
-        .map { NSEvent.ModifierFlags($0) }
+        .map { modifiers in
+            (NSEvent.ModifierFlags(modifiers.map(\.0)), SidedModifiers(modifiers.map(\.1)))
+        }
     let key: ResOrConfigParseDiagnostic<Key> = rawKeys.last.flatMap { mapping[String($0)] }
         .toResult(.init(backtrace, "Can't parse the key in '\(raw)' binding"))
-    return modifiers.flatMap { modifiers -> ResOrConfigParseDiagnostic<(NSEvent.ModifierFlags, Key)> in
-        key.flatMap { key -> ResOrConfigParseDiagnostic<(NSEvent.ModifierFlags, Key)> in
-            .success((modifiers, key))
+    return modifiers.flatMap { modifiers, sidedModifiers -> ResOrConfigParseDiagnostic<(NSEvent.ModifierFlags, SidedModifiers, Key)> in
+        key.flatMap { key -> ResOrConfigParseDiagnostic<(NSEvent.ModifierFlags, SidedModifiers, Key)> in
+            .success((modifiers, sidedModifiers, key))
         }
     }
 }

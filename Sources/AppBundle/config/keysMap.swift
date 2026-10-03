@@ -245,20 +245,45 @@ private let colemakMap: [String: Key] = keyNotationToKeyCode + [
     slash: .slash,
 ]
 
-let modifiersMap: [String: NSEvent.ModifierFlags] = [
-    "shift": .shift,
-    "alt": .option,
-    "ctrl": .control,
-    "cmd": .command,
+/// Device-dependent modifier bits. They are set in `CGEventFlags` on top of the device-independent `NSEvent.ModifierFlags`
+/// https://github.com/apple-oss-distributions/IOHIDFamily/blob/777ccd9698845aadf711e32d843c8c9b777431d9/IOHIDSystem/IOKit/hidsystem/IOLLEvent.h#L251-L261 (NX_DEVICE*KEYMASK)
+struct SidedModifiers: OptionSet, Hashable, Sendable {
+    let rawValue: UInt64
+
+    static let lctrl = SidedModifiers(rawValue: 0x0000_0001)
+    static let lshift = SidedModifiers(rawValue: 0x0000_0002)
+    static let rshift = SidedModifiers(rawValue: 0x0000_0004)
+    static let lcmd = SidedModifiers(rawValue: 0x0000_0008)
+    static let rcmd = SidedModifiers(rawValue: 0x0000_0010)
+    static let lalt = SidedModifiers(rawValue: 0x0000_0020)
+    static let ralt = SidedModifiers(rawValue: 0x0000_0040)
+    static let rctrl = SidedModifiers(rawValue: 0x0000_2000)
+}
+
+let modifierKinds: [(name: String, flag: NSEvent.ModifierFlags, left: SidedModifiers, right: SidedModifiers)] = [
+    ("alt", .option, .lalt, .ralt),
+    ("ctrl", .control, .lctrl, .rctrl),
+    ("cmd", .command, .lcmd, .rcmd),
+    ("shift", .shift, .lshift, .rshift),
 ]
 
+let modifiersMap: [String: (NSEvent.ModifierFlags, SidedModifiers)] = modifierKinds.reduce(into: [:]) { result, kind in
+    result[kind.name] = (kind.flag, [])
+    result["l" + kind.name] = (kind.flag, kind.left)
+    result["r" + kind.name] = (kind.flag, kind.right)
+}
+
 extension NSEvent.ModifierFlags {
-    func toString() -> String {
+    func toString(_ sided: SidedModifiers = []) -> String {
         var result: [String] = []
-        if contains(.option) { result.append("alt") }
-        if contains(.control) { result.append("ctrl") }
-        if contains(.command) { result.append("cmd") }
-        if contains(.shift) { result.append("shift") }
+        for kind in modifierKinds where contains(kind.flag) {
+            switch (sided.contains(kind.left), sided.contains(kind.right)) {
+                case (false, false): result.append(kind.name)
+                case (true, false): result.append("l" + kind.name)
+                case (false, true): result.append("r" + kind.name)
+                case (true, true): result += ["l" + kind.name, "r" + kind.name]
+            }
+        }
         return result.joined(separator: "-")
     }
 }
@@ -389,19 +414,3 @@ extension Key {
         }
     }
 }
-
-// doesn't work :(
-//extension NSEvent.ModifierFlags {
-//    static let lOption = NSEvent.ModifierFlags(rawValue: 1 << 1)
-//    static let rOption = NSEvent.ModifierFlags(rawValue: 1 << 2)
-//    static let lShift = NSEvent.ModifierFlags(rawValue: 0x00000002)
-//    static let rShift = NSEvent.ModifierFlags(rawValue: 0x00000004)
-//    static let lCommand = NSEvent.ModifierFlags(rawValue: 1 << 7)
-//    static let rCommand = NSEvent.ModifierFlags(rawValue: 0x00000010)
-//}
-
-// NSEvent.ModifierFlags.command.rawValue // 1 << 20
-// NSEvent.ModifierFlags.option.rawValue // 1 << 19
-// NSEvent.ModifierFlags.control.rawValue // 1 << 18
-// NSEvent.ModifierFlags.shift.rawValue // 1 << 17
-// https://github.com/koekeishiya/skhd/blob/master/src/hotkey.h
