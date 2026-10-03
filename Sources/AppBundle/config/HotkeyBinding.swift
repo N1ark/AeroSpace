@@ -30,18 +30,7 @@ extension HotKey {
     let targetBindings = targetMode.flatMap { config.modes[$0] }?.bindings ?? [:]
     for binding in targetBindings.values where !hotkeys.keys.contains(binding.descriptionWithKeyCode) {
         hotkeys[binding.descriptionWithKeyCode] = HotKey(key: binding.keyCode, modifiers: binding.modifiers, keyDownHandler: {
-            Task.startUnstructured {
-                if let activeMode {
-                    broadcastEvent(.bindingTriggered(
-                        mode: activeMode,
-                        binding: binding.descriptionWithKeyNotation,
-                    ))
-                    try await runLightSession(.hotkeyBinding, .checkServerIsEnabledOrDie()) { () throws in
-                        _ = await config.modes[activeMode]?.bindings[binding.descriptionWithKeyCode]?.commands
-                            .run(.defaultEnv, .emptyStdin)
-                    }
-                }
-            }
+            onHotkeyTriggered(binding)
         })
     }
     for (binding, key) in hotkeys {
@@ -52,6 +41,21 @@ extension HotKey {
     if oldMode != targetMode {
         broadcastEvent(.modeChanged(mode: targetMode))
         _ = await config.onModeChanged.run(.defaultEnv, .emptyStdin)
+    }
+}
+
+@MainActor func onHotkeyTriggered(_ binding: HotkeyBinding) {
+    Task.startUnstructured {
+        if let activeMode {
+            broadcastEvent(.bindingTriggered(
+                mode: activeMode,
+                binding: binding.descriptionWithKeyNotation,
+            ))
+            try await runLightSession(.hotkeyBinding, .checkServerIsEnabledOrDie()) { () throws in
+                _ = await config.modes[activeMode]?.bindings[binding.descriptionWithKeyCode]?.commands
+                    .run(.defaultEnv, .emptyStdin)
+            }
+        }
     }
 }
 
