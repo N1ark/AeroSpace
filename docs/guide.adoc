@@ -227,8 +227,15 @@ It's useful if you want to keep the other side free, for example, for typing spe
 [source,toml]
 ----
 [mode.main.binding]
-    lalt-h = 'focus left'
+    lalt-h = 'focus left' # ralt-h is not consumed by AeroSpace
 ----
+
+[NOTE]
+====
+Side-specific bindings are implemented via a different macOS API than regular bindings.
+Unlike regular bindings, they don't work when "Secure Input" is enabled (e.g. when you type in a password field).
+If any side-specific binding is declared for a key and modifier combination (e.g. `lalt-h`), then `alt-h` and `ralt-h` are handled the same way and also stop working while Secure Input is on.
+====
 
 [#config-version]
 === config-version

@@ -12,6 +12,7 @@ import HotKey
         key.isEnabled = false
     }
     hotkeys = [:]
+    syncSidedHotkeys([])
 }
 
 extension HotKey {
@@ -28,14 +29,19 @@ extension HotKey {
 @MainActor var activeMode: String? = mainModeId
 @MainActor func activateMode_nonCancellable(_ targetMode: String?) async {
     let targetBindings = targetMode.flatMap { config.modes[$0] }?.bindings ?? [:]
-    for binding in targetBindings.values where !hotkeys.keys.contains(binding.descriptionWithKeyCode) {
+    // Carbon hotkeys can't distinguish left and right modifiers. If at least one binding in the "modifiers + key" group
+    // is sided (e.g. lalt-h), then the whole group (lalt-h, ralt-h, alt-h) is handled by the event tap
+    let sidedGroups = Set(targetBindings.values.filter { !$0.sidedModifiers.isEmpty }.map(\.unsidedDescription))
+    let (sidedBindings, carbonBindings) = targetBindings.partition { sidedGroups.contains($0.value.unsidedDescription) }
+    for binding in carbonBindings.values where !hotkeys.keys.contains(binding.descriptionWithKeyCode) {
         hotkeys[binding.descriptionWithKeyCode] = HotKey(key: binding.keyCode, modifiers: binding.modifiers, keyDownHandler: {
             onHotkeyTriggered(binding)
         })
     }
     for (binding, key) in hotkeys {
-        key.isEnabled = targetBindings.keys.contains(binding)
+        key.isEnabled = carbonBindings.keys.contains(binding)
     }
+    syncSidedHotkeys(Array(sidedBindings.values))
     let oldMode = activeMode
     activeMode = targetMode
     if oldMode != targetMode {
@@ -82,6 +88,10 @@ struct HotkeyBinding: Equatable, Sendable {
             ? keyCode.toString()
             : modifiers.toString(sidedModifiers) + "-" + keyCode.toString()
         self.descriptionWithKeyNotation = descriptionWithKeyNotation
+    }
+
+    var unsidedDescription: String {
+        modifiers.isEmpty ? keyCode.toString() : modifiers.toString() + "-" + keyCode.toString()
     }
 
     static func == (lhs: HotkeyBinding, rhs: HotkeyBinding) -> Bool {
